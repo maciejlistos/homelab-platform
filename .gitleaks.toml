@@ -1,6 +1,7 @@
 [extend]
 useDefault = true
 
-[[allowlists]]
+# Single-table form so that older gitleaks releases (as used by gitleaks-action) read it too.
+[allowlist]
 description = "Upstream Forgejo runner sample config with documented example tokens"
 paths = ['''kubernetes/platform/forgejo-runner/config\.example\.yaml''']
