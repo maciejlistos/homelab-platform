@@ -1,0 +1,86 @@
+image:
+  repository: docker.n8n.io/n8nio/n8n
+  tag: "2.38.7"
+  pullPolicy: IfNotPresent
+
+queueMode:
+  enabled: false
+
+database:
+  type: sqlite
+  useExternal: false
+
+redis:
+  enabled: false
+
+replicaCount: 1
+
+strategy:
+  type: Recreate
+
+persistence:
+  enabled: true
+  storageClassName: longhorn
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+
+secretRefs:
+  existingSecret: n8n-secrets
+
+service:
+  type: ClusterIP
+  port: 5678
+
+commonLabels:
+  homelab.openai.io/service: n8n
+
+config:
+  timezone: Europe/Warsaw
+
+  extraEnv:
+    - name: N8N_PROXY_HOPS
+      value: "1"
+
+    - name: N8N_METRICS
+      value: "true"
+
+    - name: N8N_METRICS_INCLUDE_DEFAULT_METRICS
+      value: "true"
+
+    - name: N8N_DIAGNOSTICS_ENABLED
+      value: "false"
+
+webhook:
+  enabled: true
+  url: "https://n8n.example.ts.net"
+
+executions:
+  data:
+    saveOnError: "all"
+    saveOnSuccess: "all"
+    saveOnProgress: false
+    saveManualExecutions: true
+
+  pruning:
+    enabled: true
+    maxAge: 168
+    maxCount: 5000
+
+resources:
+  main:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+ingress:
+  enabled: false
+
+taskRunners:
+  enabled: false
+
+serviceAccount:
+  automountServiceAccountToken: false

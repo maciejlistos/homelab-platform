@@ -1,0 +1,267 @@
+grafana:
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+
+  persistence:
+    enabled: true
+    type: sts
+    storageClassName: longhorn
+    accessModes:
+      - ReadWriteOnce
+    size: 2Gi
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  grafana.ini:
+    plugins:
+      preinstall_disabled: true
+
+  env:
+    GF_PLUGINS_PREINSTALL_DISABLED: "true"
+
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki-gateway.logging.svc.cluster.local
+      isDefault: false
+
+      jsonData:
+        maxLines: 1000
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+
+      providers:
+        - name: homelab
+          orgId: 1
+          folder: HomeLab
+          type: file
+          disableDeletion: false
+          editable: false
+
+          options:
+            path: /var/lib/grafana/dashboards/homelab
+
+  dashboards:
+    homelab:
+      node-exporter-full:
+        gnetId: 1860
+        revision: 42
+        datasource: Prometheus
+
+      longhorn:
+        gnetId: 22705
+        revision: 1
+        datasource: Prometheus
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    retentionSize: 8GB
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1536Mi
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 10Gi
+
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+
+    additionalScrapeConfigs:
+      - job_name: node
+        scrape_interval: 30s
+
+        static_configs:
+          - targets:
+              - 10.20.0.1:9100
+            labels:
+              instance: hl-gw-01
+              role: gateway
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+    secrets:
+      - alertmanager-pushover
+
+  config:
+    global:
+      resolve_timeout: 5m
+
+    inhibit_rules:
+      - source_matchers:
+          - severity = critical
+        target_matchers:
+          - severity =~ warning|info
+        equal:
+          - namespace
+          - alertname
+
+      - source_matchers:
+          - severity = warning
+        target_matchers:
+          - severity = info
+        equal:
+          - namespace
+          - alertname
+
+    route:
+      receiver: "null"
+
+      group_by:
+        - alertname
+        - namespace
+
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname = "Watchdog"
+
+        - receiver: "null"
+          matchers:
+            - alertname = "InfoInhibitor"
+
+        - receiver: pushover-critical
+          matchers:
+            - severity = "critical"
+          group_wait: 10s
+          repeat_interval: 1h
+
+        - receiver: pushover-warning
+          matchers:
+            - severity = "warning"
+          repeat_interval: 6h
+
+    receivers:
+      - name: "null"
+
+      - name: pushover-warning
+        pushover_configs:
+          - send_resolved: true
+
+            user_key_file: /etc/alertmanager/secrets/alertmanager-pushover/user_key
+            token_file: /etc/alertmanager/secrets/alertmanager-pushover/token
+
+            priority: '{{ if eq .Status "firing"}}0{{ else }}-1{{end}}'
+
+            title: >-
+              {{ if eq .Status "firing" }}[WARNING]{{ else }}[RESOLVED]{{ end }}
+              {{ .CommonLabels.alertname}}
+
+            message: |-
+              {{ range .Alerts }}
+              {{ .Annotations.summary }}
+              {{ .Annotations.description }}
+              {{ end }}
+      - name: pushover-critical
+        pushover_configs:
+          - send_resolved: true
+
+            user_key_file: /etc/alertmanager/secrets/alertmanager-pushover/user_key
+            token_file: /etc/alertmanager/secrets/alertmanager-pushover/token
+
+            priority: '{{ if eq .Status "firing" }}1{{ else }}0{{ end }}'
+
+            title: >-
+              {{ if eq .Status "firing" }}[CRITICAL]{{ else }}[RESOLVED]{{ end }}
+              {{ .CommonLabels.alertname }}
+
+            message: |-
+              {{ range .Alerts }}
+              {{ .Annotations.summary }}
+              {{ .Annotations.description }}
+              {{ end }}
+
+kubeControllerManager:
+  enabled: true
+  endpoints:
+    - 10.20.0.10
+
+  service:
+    enabled: true
+    port: 10257
+    targetPort: 10257
+
+  serviceMonitor:
+    enabled: true
+    https: true
+    insecureSkipVerify: true
+
+kubeScheduler:
+  enabled: true
+  endpoints:
+    - 10.20.0.10
+
+  service:
+    enabled: true
+    port: 10259
+    targetPort: 10259
+
+  serviceMonitor:
+    enabled: true
+    https: true
+    insecureSkipVerify: true
+
+kubeEtcd:
+  enabled: true
+  endpoints:
+    - 10.20.0.10
+
+  service:
+    enabled: true
+    port: 2381
+    targetPort: 2381
+
+  serviceMonitor:
+    enabled: true
+    scheme: http
+
+kubeProxy:
+  enabled: false
+
+defaultRules:
+  rules:
+    kubeProxy: false
+  disabled:
+    KubeSchedulerDown: true
+    KubeControllerManagerDown: true

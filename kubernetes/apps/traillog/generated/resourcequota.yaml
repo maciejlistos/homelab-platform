@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: traillog-budget
+  namespace: traillog
+spec:
+  hard:
+    requests.cpu: '1000m'
+    limits.cpu: '2000m'
+    requests.memory: '512Mi'
+    limits.memory: '1024Mi'
+    requests.storage: '16Gi'

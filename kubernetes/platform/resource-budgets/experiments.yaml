@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: experiments
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  labels:
+    homelab.openai.io/purpose: experiments
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: container-budgets
+  namespace: experiments
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+        ephemeral-storage: 64Mi
+      default:
+        cpu: 500m
+        memory: 256Mi
+        ephemeral-storage: 512Mi
+      max:
+        cpu: "2"
+        memory: 1Gi
+        ephemeral-storage: 2Gi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: namespace-budget
+  namespace: experiments
+spec:
+  hard:
+    requests.cpu: "1"
+    limits.cpu: "2"
+    requests.memory: 1Gi
+    limits.memory: 2Gi
+    requests.ephemeral-storage: 1Gi
+    limits.ephemeral-storage: 4Gi
+    pods: "5"
+    count/deployments.apps: "3"
+    count/jobs.batch: "5"
+    configmaps: "10"
+    secrets: "10"
+    services: "3"
+    services.loadbalancers: "0"
+    services.nodeports: "0"
+    persistentvolumeclaims: "0"

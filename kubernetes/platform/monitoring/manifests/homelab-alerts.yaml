@@ -1,0 +1,119 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+
+metadata:
+  name: homelab-alerts
+  namespace: monitoring
+
+  labels:
+    release: kube-prometheus-stack
+
+spec:
+  groups:
+    - name: homelab.gateway
+      rules:
+        - alert: HomeLabGatewayDown
+          expr: up{instance="hl-gw-01"} == 0
+          for: 2m
+
+          labels:
+            severity: critical
+
+          annotations:
+            summary: HomeLab gateway is unreachable
+            description: Prometheus has not been able to scrape hl-gw-01 for more than 2 minutes.
+
+        - alert: HomeLabGatewayDiskUsageHigh
+          expr: |
+            (
+              1 -
+              node_filesystem_avail_bytes{
+                instance="hl-gw-01",
+                fstype=~"ext4|xfs|btrfs"
+              }
+              /
+              node_filesystem_size_bytes{
+                instance="hl-gw-01",
+                fstype=~"ext4|xfs|btrfs"
+              }
+            ) > 0.85
+          for: 15m
+          labels:
+            severity: warning
+
+          annotations:
+            summary: Gateway filesystem usage is above 85%
+            description: Filesystem {{ $labels.mountpoint }} on hl-gw-01 is running low on space.
+
+        - alert: HomeLabGatewayCriticalServiceDown
+          expr: |
+            node_systemd_unit_state{
+              instance="hl-gw-01",
+              name=~"(dnsmasq|sshd|tailscaled)\\.service",
+              state="active"
+            } == 0
+          for: 2m
+          labels:
+            severity: critical
+
+          annotations:
+            summary: Critical gateway service is down
+            description: Systemd service {{ $labels.name }} is not active on hl-gw-01.
+
+    - name: homelab.longhorn
+      rules:
+        - alert: LonghornVolumeDegraded
+          expr: |
+            longhorn_volume_robustness{state="degraded"} == 1
+          for: 5m
+          labels:
+            severity: warning
+
+          annotations:
+            summary: Longhorn volume is degraded
+            description: Longhorn volume {{ $labels.volume }} is degraded.
+
+        - alert: LonghornVolumeFaulted
+          expr: |
+            longhorn_volume_robustness{state="faulted"} == 1
+          for: 1m
+          labels:
+            severity: critical
+
+          annotations:
+            summary: Longhorn volume is faulted
+            description: Longhorn volume {{ $labels.volume }} is faulted.
+
+        - alert: LonghornVolumeUsageHigh
+          expr: |
+            100 *
+            (
+              longhorn_volume_usage_bytes
+              /
+              longhorn_volume_capacity_bytes
+            ) > 85
+          for: 15m
+          labels:
+            severity: warning
+
+          annotations:
+            summary: Longhorn volume usage is above 85%
+            description: Longhorn volume {{ $labels.volume }} is running low on available capacity.
+
+    - name: homelab.home-assistant
+      rules:
+        - alert: HomeAssistantDown
+
+          expr: |
+            absent(up{job="home-assistant"})
+            or
+            up{job="home-assistant"} == 0
+
+          for: 3m
+
+          labels:
+            severity: warning
+
+          annotations:
+            summary: Home Assistant is unavailable
+            description: Prometheus has been unable to scrape Home Assistant for more than 3 minutes.

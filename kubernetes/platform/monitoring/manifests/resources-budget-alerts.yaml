@@ -1,0 +1,132 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-resource-budgets
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: homelab.resource-budgets
+      rules:
+        - alert: HomeLabNamespaceBudgetNearlyFull
+          expr: |
+            (
+              max by (namespace, resourcequota, resource) (
+                kube_resourcequota{
+                  namespace=~"forgejo-runner|experiments",
+                  type="used"
+                }
+              )
+              /
+              max by (namespace, resourcequota, resource) (
+                kube_resourcequota{
+                  namespace=~"forgejo-runner|experiments",
+                  type="hard"
+                }
+              )
+            ) > 0.85
+            and on (namespace, resourcequota, resource)
+            (
+              max by (namespace, resourcequota, resource) (
+                kube_resourcequota{
+                  namespace=~"forgejo-runner|experiments",
+                  type="hard"
+                }
+              ) > 0
+            )
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Namespace {{ $labels.namespace }} is nearing a quota limit"
+            description: >-
+              Quota {{ $labels.resourcequota }}, resource {{ $labels.resource }},
+              is {{ $value | humanizePercentage }} allocated.
+              Check declared requests, limits or object counts before adding workloads.
+
+        - alert: HomeLabRunnerMemoryPressure
+          expr: |
+            (
+              max by (namespace, pod, container) (
+                container_memory_working_set_bytes{
+                  namespace="forgejo-runner",
+                  container=~"runner|docker",
+                  image!=""
+                }
+              )
+              /
+              max by (namespace, pod, container) (
+                kube_pod_container_resource_limits{
+                  namespace="forgejo-runner",
+                  container=~"runner|docker",
+                  resource="memory",
+                  unit="byte"
+                }
+              )
+            ) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Runner container {{ $labels.container }} has high memory usage"
+            description: >-
+              Container {{ $labels.container }} in {{ $labels.pod }}
+              is using {{ $value | humanizePercentage }} of its memory limit.
+              Inspect the active CI job and container memory before increasing limits.
+
+        - alert: HomeLabRunnerContainerOOM
+          expr: |
+            (
+              max by (namespace, pod, container) (
+                increase(kube_pod_container_status_restarts_total{
+                  namespace="forgejo-runner",
+                  container=~"runner|docker"
+                }[10m])
+              ) > 0
+            )
+            and on (namespace, pod, container)
+            (
+              max by (namespace, pod, container) (
+                kube_pod_container_status_last_terminated_reason{
+                  namespace="forgejo-runner",
+                  container=~"runner|docker",
+                  reason="OOMKilled"
+                }
+              ) == 1
+            )
+          labels:
+            severity: warning
+          annotations:
+            summary: "Runner container {{ $labels.container }} restarted after an OOM"
+            description: >-
+              Container {{ $labels.container }} in {{ $labels.pod }} restarted
+              within the last 10 minutes and its last termination reason is OOMKilled.
+              Inspect the previous container logs and the affected CI run.
+
+        - alert: HomeLabRunnerNodeDiskPressure
+          expr: |
+            (
+              max by (node) (
+                kube_node_status_condition{
+                  condition="DiskPressure",
+                  status="true"
+                }
+              ) == 1
+            )
+            and on (node)
+            max by (node) (
+              kube_pod_info{
+                namespace="forgejo-runner",
+                pod=~"forgejo-runner-.*"
+              }
+            )
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Runner node {{ $labels.node }} reports disk pressure"
+            description: >-
+              Check node filesystem space and inodes, container logs,
+              and Docker storage consumption. Perform Docker cleanup only
+              during an idle runner maintenance window.

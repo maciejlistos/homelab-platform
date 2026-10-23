@@ -1,0 +1,363 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  KYVERNO_VERSION: "1.19.0"
+  KYVERNO_SHA256: "f5b4dc73c8e2f3f66e8e0034dc370e6eb6c4617eff7d5ae3838d2200034eb421"
+  KCL_VERSION: "0.13.0"
+  KCL_SHA256: "1cb3490c4df4c823ae6b76289797791c1077611f677d2b3a3d0bc292dc704f2e"
+
+jobs:
+  # Decide which checks are relevant for the changed paths. Workflow-level
+  # `paths` filters are not used on purpose: a required check that never
+  # starts would block merging, so `result` below is the only required check.
+  changes:
+    name: Detect changes
+    runs-on: homelab
+    timeout-minutes: 5
+    outputs:
+      kyverno: ${{ steps.filter.outputs.kyverno }}
+      n8n: ${{ steps.filter.outputs.n8n }}
+      traillog: ${{ steps.filter.outputs.traillog }}
+      nix: ${{ steps.filter.outputs.nix }}
+      secrets: ${{ steps.filter.outputs.secrets }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Match changed paths
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          all=false
+          case "$EVENT_NAME" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base=""; all=true ;;
+          esac
+
+          # New branches, force pushes and manual runs fall back to every check.
+          if [[ "$all" == false ]] && {
+            [[ -z "$base" || "$base" =~ ^0+$ ]] ||
+            ! git cat-file -e "${base}^{commit}" 2>/dev/null
+          }; then
+            echo "Base commit '${base}' is unavailable; running every check."
+            all=true
+          fi
+
+          kyverno=$all n8n=$all traillog=$all nix=$all secrets=$all
+
+          if [[ "$all" == false ]]; then
+            changed="$(git diff --name-only "${base}...HEAD")"
+            echo "Changed files:"
+            printf '  %s\n' $changed
+
+            while IFS= read -r file; do
+              case "$file" in
+                .forgejo/workflows/ci.yaml)
+                  kyverno=true n8n=true traillog=true nix=true secrets=true ;;
+              esac
+
+              case "$file" in
+                policies/kyverno/* | tests/kyverno/* | \
+                kubernetes/platform/home-assistant/* | \
+                kubernetes/platform/forgejo-runner/manifests/*)
+                  kyverno=true ;;
+              esac
+
+              case "$file" in
+                policies/kyverno/* | scripts/render-n8n.nu | \
+                kubernetes/applications/n8n.yaml | kubernetes/platform/n8n/* | \
+                flake.nix | flake.lock)
+                  n8n=true ;;
+              esac
+
+              case "$file" in
+                kubernetes/apps/traillog/kcl/* | kubernetes/apps/traillog/generated/*)
+                  traillog=true ;;
+              esac
+
+              case "$file" in
+                flake.nix | flake.lock | hosts/* | modules/* | keys/* | secrets/hl-gw-01.yaml)
+                  nix=true ;;
+              esac
+
+              case "$file" in
+                .sops.yaml | secrets/* | talos/secrets.yaml | *.sops.yaml | kubernetes/*)
+                  secrets=true ;;
+              esac
+            done <<< "$changed"
+          fi
+
+          {
+            echo "kyverno=${kyverno}"
+            echo "n8n=${n8n}"
+            echo "traillog=${traillog}"
+            echo "nix=${nix}"
+            echo "secrets=${secrets}"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  kyverno:
+    name: Kyverno policies
+    needs: changes
+    if: needs.changes.outputs.kyverno == 'true'
+    runs-on: homelab
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Kyverno CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli_dir="$(mktemp -d)"
+          archive="kyverno-cli_v${KYVERNO_VERSION}_linux_x86_64.tar.gz"
+          curl --fail --location --retry 3 \
+            --output "${cli_dir}/${archive}" \
+            "https://github.com/kyverno/kyverno/releases/download/v${KYVERNO_VERSION}/${archive}"
+          printf '%s  %s\n' "$KYVERNO_SHA256" "${cli_dir}/${archive}" | sha256sum --check -
+          tar -xzf "${cli_dir}/${archive}" -C "$cli_dir"
+          "${cli_dir}/kyverno" version
+          echo "KYVERNO_BIN=${cli_dir}/kyverno" >> "$GITHUB_ENV"
+
+      - name: Run policy tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${KYVERNO_BIN}" test tests/kyverno
+
+      - name: Validate application Deployments
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${KYVERNO_BIN}" apply \
+            policies/kyverno/deployment-guardrails.yaml \
+            --resource kubernetes/platform/home-assistant/deployment.yaml \
+            --resource kubernetes/platform/forgejo-runner/manifests/deployment.yaml
+
+  n8n:
+    name: n8n chart audit
+    needs: changes
+    if: needs.changes.outputs.n8n == 'true'
+    runs-on: homelab
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Kyverno CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli_dir="$(mktemp -d)"
+          archive="kyverno-cli_v${KYVERNO_VERSION}_linux_x86_64.tar.gz"
+          curl --fail --location --retry 3 \
+            --output "${cli_dir}/${archive}" \
+            "https://github.com/kyverno/kyverno/releases/download/v${KYVERNO_VERSION}/${archive}"
+          printf '%s  %s\n' "$KYVERNO_SHA256" "${cli_dir}/${archive}" | sha256sum --check -
+          tar -xzf "${cli_dir}/${archive}" -C "$cli_dir"
+          "${cli_dir}/kyverno" version
+          echo "KYVERNO_BIN=${cli_dir}/kyverno" >> "$GITHUB_ENV"
+
+      - name: Install sudo for Nix setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v sudo >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y sudo
+          fi
+
+      - name: Install Nix
+        uses: https://github.com/cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Render n8n Deployments
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rendered="$(mktemp --suffix=.yaml)"
+          echo "N8N_RENDERED=${rendered}" >> "$GITHUB_ENV"
+
+          nix shell --inputs-from . \
+            nixpkgs#nushell \
+            nixpkgs#kubernetes-helm \
+            --command nu scripts/render-n8n.nu "$rendered"
+
+      # Audit only: the upstream chart does not satisfy the guardrails yet.
+      - name: Audit n8n Deployments
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${KYVERNO_BIN}" apply \
+            policies/kyverno/deployment-guardrails.yaml \
+            --resource "$N8N_RENDERED"
+
+  traillog:
+    name: TrailLog generated quota
+    needs: changes
+    if: needs.changes.outputs.traillog == 'true'
+    runs-on: homelab
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned KCL CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = Linux
+          test "$(uname -m)" = x86_64
+          cli_dir="$(mktemp -d)"
+          archive="kcl-v${KCL_VERSION}-linux-amd64.tar.gz"
+          curl --fail --location --retry 3 \
+            --output "${cli_dir}/${archive}" \
+            "https://github.com/kcl-lang/cli/releases/download/v${KCL_VERSION}/${archive}"
+          printf '%s  %s\n' "$KCL_SHA256" "${cli_dir}/${archive}" | sha256sum --check -
+          tar -xzf "${cli_dir}/${archive}" -C "$cli_dir"
+          "${cli_dir}/kcl" --version
+          echo "KCL_BIN=${cli_dir}/kcl" >> "$GITHUB_ENV"
+
+      - name: Check generated quota is up to date
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${KCL_BIN}" run kubernetes/apps/traillog/kcl/budget.k -o kubernetes/apps/traillog/generated/resourcequota.yaml
+          git ls-files --error-unmatch kubernetes/apps/traillog/generated/resourcequota.yaml
+          git diff --exit-code -- kubernetes/apps/traillog/generated/resourcequota.yaml
+
+  nix:
+    name: NixOS evaluation
+    needs: changes
+    if: needs.changes.outputs.nix == 'true'
+    runs-on: homelab
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install sudo for Nix setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v sudo >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y sudo
+          fi
+
+      - name: Install Nix
+        uses: https://github.com/cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # Evaluates every nixosConfiguration (hl-gw-01) without building it.
+      - name: Check flake
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix flake check --no-build
+
+  secrets:
+    name: SOPS encryption guard
+    needs: changes
+    if: needs.changes.outputs.secrets == 'true'
+    runs-on: homelab
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject plaintext secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t files < <(
+            {
+              git ls-files 'secrets/*' 'talos/secrets.yaml' '*.sops.yaml'
+              git grep -lE '^kind:[[:space:]]*Secret[[:space:]]*$' -- '*.yaml' '*.yml' || true
+            } | grep -vx '.sops.yaml' | sort -u
+          )
+
+          failed=0
+          for file in "${files[@]}"; do
+            if grep -q '^sops:' "$file" && grep -q 'ENC\[' "$file"; then
+              echo "ok         ${file}"
+            else
+              echo "PLAINTEXT  ${file}"
+              failed=1
+            fi
+          done
+
+          exit "$failed"
+
+  # The only check to mark as required in branch protection.
+  result:
+    name: Result
+    needs: [changes, kyverno, n8n, traillog, nix, secrets]
+    if: always()
+    runs-on: homelab
+    timeout-minutes: 5
+
+    steps:
+      - name: Check job results
+        shell: bash
+        env:
+          RESULTS: >-
+            changes=${{ needs.changes.result }}
+            kyverno=${{ needs.kyverno.result }}
+            n8n=${{ needs.n8n.result }}
+            traillog=${{ needs.traillog.result }}
+            nix=${{ needs.nix.result }}
+            secrets=${{ needs.secrets.result }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for entry in $RESULTS; do
+            echo "$entry"
+            case "${entry#*=}" in
+              success | skipped) ;;
+              *) failed=1 ;;
+            esac
+          done
+          exit "$failed"

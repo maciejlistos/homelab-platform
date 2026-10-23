@@ -1,0 +1,25 @@
+# SOPS creation rules. The recipients below are placeholders; the private
+# repository lists the administrator's age key and each host's age key,
+# derived from its SSH host key with ssh-to-age.
+keys:
+  - &admin age1_REPLACE_WITH_ADMIN_RECIPIENT
+  - &hl_gw_01 age1_REPLACE_WITH_HL_GW_01_HOST_RECIPIENT
+
+creation_rules:
+  - path_regex: ^secrets/hl-gw-01\.yaml$
+    key_groups:
+      - age: [*admin, *hl_gw_01]
+
+  - path_regex: ^secrets/esphome\.yaml$
+    key_groups:
+      - age: [*admin]
+
+  - path_regex: ^talos/secrets\.yaml$
+    key_groups:
+      - age: [*admin]
+
+  # Kubernetes Secrets: encrypt only the payload, keep metadata readable.
+  - path_regex: ^kubernetes/.*\.sops\.yaml$
+    encrypted_regex: ^(data|stringData)$
+    key_groups:
+      - age: [*admin]

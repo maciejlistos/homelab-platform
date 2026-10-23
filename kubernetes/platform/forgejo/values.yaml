@@ -1,0 +1,65 @@
+replicaCount: 1
+
+strategy:
+  type: Recreate
+
+image:
+  registry: code.forgejo.org
+  repository: forgejo/forgejo
+  tag: 15.0.8-rootless
+  rootless: true
+  pullPolicy: IfNotPresent
+
+persistence:
+  enabled: true
+  storageClass: longhorn
+  size: 30Gi
+  accessModes:
+    - ReadWriteOnce
+
+gitea:
+  admin:
+    existingSecret: forgejo-admin-secret
+    email: forgejo@home.arpa
+    passwordMode: initialOnlyRequireReset
+
+  config:
+    APP_NAME: HomeLab Forgejo
+
+    server:
+      DOMAIN: forgejo.example.ts.net
+      ROOT_URL: https://forgejo.example.ts.net/
+      PROTOCOL: http
+
+      SSH_DOMAIN: forgejo-ssh.example.ts.net
+      SSH_PORT: 22
+
+    service:
+      DISABLE_REGISTRATION: true
+
+    indexer:
+      REPO_INDEXER_ENABLED: true
+
+  metrics:
+    enabled: true
+
+    serviceMonitor:
+      enabled: true
+      namespace: forgejo
+
+service:
+  http:
+    type: ClusterIP
+    port: 3000
+
+  ssh:
+    type: LoadBalancer
+    port: 22
+    loadBalancerClass: tailscale
+
+    annotations:
+      tailscale.com/hostname: forgejo-ssh
+      tailscale.com/tags: tag:forgejo
+
+ingress:
+  enabled: false

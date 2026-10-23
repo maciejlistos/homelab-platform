@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+
+metadata:
+  name: longhorn
+  namespace: argocd
+
+spec:
+  project: default
+
+  sources:
+    - repoURL: https://charts.longhorn.io/
+      chart: longhorn
+      targetRevision: v1.12.1
+
+      helm:
+        valueFiles:
+          - $values/kubernetes/platform/longhorn/values.yaml
+
+    - repoURL: https://github.com/maciejlistos/homelab-platform.git
+      targetRevision: main
+      ref: values
+
+    - repoURL: https://github.com/maciejlistos/homelab-platform.git
+      targetRevision: main
+      path: kubernetes/platform/longhorn/manifests
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: longhorn-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: privileged
+        pod-security.kubernetes.io/audit: privileged
+        pod-security.kubernetes.io/warn: privileged
+
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

@@ -1,0 +1,9 @@
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: forgejo-lan
+spec:
+  serviceSelector:
+    matchLabels:
+      homelab.maciejl.io/exposure: forgejo-lan
+  loadBalancerIPs: true

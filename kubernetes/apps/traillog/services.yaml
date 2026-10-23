@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: traillog-headless
+  namespace: traillog
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: traillog
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traillog
+  namespace: traillog
+  labels:
+    app.kubernetes.io/name: traillog
+spec:
+  selector:
+    app.kubernetes.io/name: traillog
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

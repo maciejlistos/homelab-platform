@@ -1,0 +1,3 @@
+[tasks."traillog:kcl"]
+description = "Render the TrailLog namespace quota with KCL"
+run = "kcl run kubernetes/apps/traillog/kcl/budget.k -o kubernetes/apps/traillog/generated/resourcequota.yaml"

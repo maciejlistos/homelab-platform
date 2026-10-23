@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Upstream Forgejo runner sample config with documented example tokens"
+paths = ['''kubernetes/platform/forgejo-runner/config\.example\.yaml''']

@@ -1,0 +1,40 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: homelab-pod-guardrails
+policies:
+- ../../../policies/kyverno/pod-guardrails.yaml
+resources:
+- compliant.yaml
+- privileged.yaml
+- escalation.yaml
+- missing-resources.yaml
+- compliant-deployment.yaml
+- privileged-deployment.yaml
+results:
+- isValidatingPolicy: true
+  policy: homelab-pod-guardrails
+  kind: Pod
+  resources:
+  - policy-lab/compliant
+  result: pass
+- isValidatingPolicy: true
+  policy: homelab-pod-guardrails
+  kind: Pod
+  resources:
+  - policy-lab/privileged
+  - policy-lab/escalation
+  - policy-lab/missing-resources
+  result: fail
+- isValidatingPolicy: true
+  policy: homelab-pod-guardrails
+  kind: Deployment
+  resources:
+  - policy-lab/compliant-deployment
+  result: pass
+- isValidatingPolicy: true
+  policy: homelab-pod-guardrails
+  kind: Deployment
+  resources:
+  - policy-lab/privileged-deployment
+  result: fail

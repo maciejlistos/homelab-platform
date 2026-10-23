@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forgejo-lan-proxy
+  namespace: forgejo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: forgejo-lan-proxy
+  template:
+    metadata:
+      labels:
+        app: forgejo-lan-proxy
+    spec:
+      containers:
+        - name: caddy
+          image: caddy:2.11.7-alpine
+          ports:
+            - name: https
+              containerPort: 443
+          readinessProbe:
+            tcpSocket:
+              port: https
+          volumeMounts:
+            - name: config
+              mountPath: /etc/caddy/Caddyfile
+              subPath: Caddyfile
+              readOnly: true
+            - name: tls
+              mountPath: /certs
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: forgejo-lan-caddy
+        - name: tls
+          secret:
+            secretName: forgejo-lan-tls

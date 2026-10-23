@@ -1,0 +1,11 @@
+apiVersion: cilium.io/v2
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: forgejo-lan
+spec:
+  blocks:
+    - start: 10.20.0.50
+      stop: 10.20.0.50
+  serviceSelector:
+    matchLabels:
+      homelab.maciejl.io/exposure: forgejo-lan

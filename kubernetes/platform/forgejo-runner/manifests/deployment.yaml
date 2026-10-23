@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forgejo-runner
+  namespace: forgejo-runner
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: forgejo-runner
+  template:
+    metadata:
+      labels:
+        app: forgejo-runner
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+
+      securityContext:
+        fsGroup: 1000
+
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+
+      containers:
+        - name: runner
+          image: data.forgejo.org/forgejo/runner:13.0.0
+          command:
+            - forgejo-runner
+          args:
+            - daemon
+            - --config
+            - /config/config.yaml
+          workingDir: /data
+          env:
+            - name: DOCKER_HOST
+              value: tcp://127.0.0.1:2375
+            - name: HOME
+              value: /data
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: credentials
+              mountPath: /secrets
+              readOnly: true
+            - name: runner-data
+              mountPath: /data
+
+        - name: docker
+          image: docker:28.5.2-dind
+          command:
+            - dockerd
+          args:
+            - --host=tcp://127.0.0.1:2375
+            - --tls=false
+            - --storage-driver=overlay2
+          env:
+            - name: DOCKER_HOST
+              value: tcp://127.0.0.1:2375
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          startupProbe:
+            exec:
+              command:
+                - docker
+                - info
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command:
+                - docker
+                - info
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+              ephemeral-storage: 2Gi
+            limits:
+              cpu: "3"
+              memory: 6Gi
+              ephemeral-storage: 25Gi
+          volumeMounts:
+            - name: docker-data
+              mountPath: /var/lib/docker
+
+      volumes:
+        - name: config
+          configMap:
+            name: forgejo-runner-config
+        - name: credentials
+          secret:
+            secretName: forgejo-runner-credentials
+            defaultMode: 0440
+        - name: runner-data
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: docker-data
+          emptyDir:
+            sizeLimit: 20Gi

@@ -1,0 +1,16 @@
+apiServerProxyConfig:
+  mode: "true"
+
+operatorConfig:
+  hostname: homelab-k8s-operator
+
+  defaultTags:
+    - tag:k8s-operator
+
+proxyConfig:
+  defaultTags: tag:k8s
+  firewallMode: auto
+
+ingressClass:
+  enabled: true
+  name: tailscale

@@ -1,0 +1,51 @@
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: homelab-pod-guardrails
+spec:
+  validationActions:
+  - Audit
+  failurePolicy: Ignore
+  evaluation:
+    admission:
+      enabled: true
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  variables:
+  - name: workloadContainers
+    expression: object.spec.containers + object.spec.?initContainers.orValue([])
+  - name: allContainers
+    expression: variables.workloadContainers + object.spec.?ephemeralContainers.orValue([])
+  validations:
+  - message: Containers must not run privileged.
+    expression: |-
+      variables.allContainers.all(c,
+        !c.?securityContext.privileged.orValue(false))
+  - message: Containers must explicitly disable privilege escalation.
+    expression: |-
+      variables.allContainers.all(c,
+        c.?securityContext.allowPrivilegeEscalation.orValue(true) == false)
+  - message: Containers must specify CPU/memory requests and a memory limit.
+    expression: |-
+      variables.workloadContainers.all(c,
+        has(c.resources) &&
+        has(c.resources.requests) &&
+        "cpu" in c.resources.requests &&
+        "memory" in c.resources.requests &&
+        has(c.resources.limits) &&
+        "memory" in c.resources.limits)
+  autogen:
+    podControllers:
+      controllers:
+      - deployments

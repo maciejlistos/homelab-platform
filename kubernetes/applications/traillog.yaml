@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traillog
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/maciejlistos/homelab-platform.git
+    targetRevision: main
+    path: kubernetes/apps/traillog
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traillog
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true

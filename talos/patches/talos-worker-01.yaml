@@ -1,0 +1,60 @@
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: talos-worker-01
+auto: off
+
+---
+machine:
+  install:
+    disk: /dev/sdb
+    wipe: true
+    image: factory.talos.dev/metal-installer/613e1592b2da41ae5e265e8789429f22e121aab91cb4deb6bc3c0b6262961245:v1.13.9
+
+  network:
+    extraHostEntries:
+      - ip: 10.20.0.50
+        aliases:
+          - forgejo.example.ts.net
+  registries:
+    config:
+      forgejo.example.ts.net:
+        tls:
+          ca: REPLACE_WITH_BASE64_ENCODED_REGISTRY_CA
+
+  kubelet:
+    extraMounts:
+      - destination: /var/mnt/longhorn
+        type: bind
+        source: /var/mnt/longhorn
+        options:
+          - bind
+          - rshared
+          - rw
+    extraConfig:
+      serverTLSBootstrap: true
+
+  nodeLabels:
+    node.longhorn.io/create-default-disk: "true"
+
+cluster:
+  network:
+    cni:
+      name: none
+  proxy:
+    disabled: true
+
+---
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+
+name: longhorn
+
+provisioning:
+  diskSelector:
+    match: "'/dev/disk/by-id/usb-SSDPR-CX_400-01T-G2_EXAMPLESERIAL0002-0:0' in disk.symlinks"
+
+  grow: true
+  minSize: 10GB
+
+filesystem:
+  type: ext4

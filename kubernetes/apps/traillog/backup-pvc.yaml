@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: traillog-backups
+  namespace: traillog
+  annotations:
+    argocd.argoproj.io/sync-options: Prun=false,Delete=false
+spec:
+  accessModes:
+    - ReadWriteOncePod
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 10Gi

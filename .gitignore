@@ -1,0 +1,19 @@
+# Nix build results
+result
+result-*
+
+# direnv
+.direnv/
+
+# Generated Talos configs contain credentials
+talos/generated
+
+# ESP secrets and compiled files
+esphome/secrets.yaml
+esphome/.esphome/
+
+# Obsidian vault local state
+obsidian/.obsidian/workspace.json
+obsidian/.obsidian/workspace-mobile.json
+obsidian/.obsidian/cache/
+obsidian/.obsidian/plugins/*/data.json

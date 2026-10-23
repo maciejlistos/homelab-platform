@@ -1,0 +1,149 @@
+name: CI
+
+# GitHub-hosted counterpart of .forgejo/workflows/ci.yaml, which runs the same
+# checks on the self-hosted runner in the private repository. The mirror is
+# small, so every check runs on every change instead of filtering by path.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KYVERNO_VERSION: "1.19.0"
+  KYVERNO_SHA256: "f5b4dc73c8e2f3f66e8e0034dc370e6eb6c4617eff7d5ae3838d2200034eb421"
+  KCL_VERSION: "0.13.0"
+  KCL_SHA256: "1cb3490c4df4c823ae6b76289797791c1077611f677d2b3a3d0bc292dc704f2e"
+
+jobs:
+  kyverno:
+    name: Kyverno policies
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Kyverno CLI
+        run: |
+          set -euo pipefail
+          cli_dir="$(mktemp -d)"
+          archive="kyverno-cli_v${KYVERNO_VERSION}_linux_x86_64.tar.gz"
+          curl --fail --location --retry 3 --output "${cli_dir}/${archive}" \
+            "https://github.com/kyverno/kyverno/releases/download/v${KYVERNO_VERSION}/${archive}"
+          printf '%s  %s\n' "$KYVERNO_SHA256" "${cli_dir}/${archive}" | sha256sum --check -
+          tar -xzf "${cli_dir}/${archive}" -C "$cli_dir"
+          echo "${cli_dir}" >> "$GITHUB_PATH"
+
+      - name: Run policy tests
+        run: kyverno test tests/kyverno
+
+      - name: Validate application Deployments
+        run: |
+          kyverno apply policies/kyverno/deployment-guardrails.yaml \
+            --resource kubernetes/platform/home-assistant/deployment.yaml \
+            --resource kubernetes/platform/forgejo-runner/manifests/deployment.yaml
+
+  n8n:
+    name: n8n chart audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Kyverno CLI
+        run: |
+          set -euo pipefail
+          cli_dir="$(mktemp -d)"
+          archive="kyverno-cli_v${KYVERNO_VERSION}_linux_x86_64.tar.gz"
+          curl --fail --location --retry 3 --output "${cli_dir}/${archive}" \
+            "https://github.com/kyverno/kyverno/releases/download/v${KYVERNO_VERSION}/${archive}"
+          printf '%s  %s\n' "$KYVERNO_SHA256" "${cli_dir}/${archive}" | sha256sum --check -
+          tar -xzf "${cli_dir}/${archive}" -C "$cli_dir"
+          echo "${cli_dir}" >> "$GITHUB_PATH"
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Render n8n Deployments
+        run: |
+          set -euo pipefail
+          rendered="$(mktemp --suffix=.yaml)"
+          echo "N8N_RENDERED=${rendered}" >> "$GITHUB_ENV"
+          nix shell --inputs-from . nixpkgs#nushell nixpkgs#kubernetes-helm \
+            --command nu scripts/render-n8n.nu "$rendered"
+
+      # Audit only: the upstream chart does not satisfy the guardrails yet.
+      - name: Audit n8n Deployments
+        continue-on-error: true
+        run: kyverno apply policies/kyverno/deployment-guardrails.yaml --resource "$N8N_RENDERED"
+
+  traillog:
+    name: TrailLog generated quota
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned KCL CLI
+        run: |
+          set -euo pipefail
+          cli_dir="$(mktemp -d)"
+          archive="kcl-v${KCL_VERSION}-linux-amd64.tar.gz"
+          curl --fail --location --retry 3 --output "${cli_dir}/${archive}" \
+            "https://github.com/kcl-lang/cli/releases/download/v${KCL_VERSION}/${archive}"
+          printf '%s  %s\n' "$KCL_SHA256" "${cli_dir}/${archive}" | sha256sum --check -
+          tar -xzf "${cli_dir}/${archive}" -C "$cli_dir"
+          echo "${cli_dir}" >> "$GITHUB_PATH"
+
+      - name: Check generated quota is up to date
+        run: |
+          set -euo pipefail
+          kcl run kubernetes/apps/traillog/kcl/budget.k -o kubernetes/apps/traillog/generated/resourcequota.yaml
+          git diff --exit-code -- kubernetes/apps/traillog/generated/resourcequota.yaml
+
+  nix:
+    name: NixOS evaluation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@v31
+
+      # Evaluates every nixosConfiguration (hl-gw-01) without building it.
+      - name: Check flake
+        run: nix flake check --no-build
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check for private values
+        run: scripts/check-public-mirror.sh
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

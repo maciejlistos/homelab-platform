@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forgejo-lan-caddy
+  namespace: forgejo
+data:
+  Caddyfile: |
+    forgejo.example.ts.net {
+      tls /certs/tls.crt /certs/tls.key
+      reverse_proxy http://forgejo-http.forgejo.svc.cluster.local:3000
+    }

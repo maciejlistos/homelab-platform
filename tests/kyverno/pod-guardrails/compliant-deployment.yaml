@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compliant-deployment
+  namespace: policy-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: compliant-deployment
+  template:
+    metadata:
+      labels:
+        app: compliant-deployment
+    spec:
+      containers:
+      - name: app
+        image: busybox:1.37.0
+        command:
+        - sleep
+        - '3600'
+        securityContext:
+          privileged: false
+          allowPrivilegeEscalation: false
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            memory: 32Mi

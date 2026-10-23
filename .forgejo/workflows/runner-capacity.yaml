@@ -1,0 +1,27 @@
+name: Runner capacity check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  capacity-check:
+    name: Capacity probe ${{ matrix.slot }}
+    runs-on: homelab
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        slot: [one, two, three, four, five]
+
+    steps:
+      - name: Hold runner slot
+        shell: bash
+        env:
+          PROBE_SLOT: ${{ matrix.slot }}
+        run: |
+          set -euo pipefail
+          echo "START ${PROBE_SLOT} $(date -u +%FT%TZ)"
+          sleep 60
+          echo "END ${PROBE_SLOT} $(date -u +%FT%TZ)"

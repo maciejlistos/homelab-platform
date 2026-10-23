@@ -1,0 +1,27 @@
+preUpgradeChecker:
+  jobEnabled: false
+
+defaultSettings:
+  createDefaultDiskLabeledNodes: true
+  defaultDataPath: /var/mnt/longhorn
+
+  defaultReplicaCount: '{"v1":"2","v2":"2"}'
+  storageOverProvisioningPercentage: 110
+
+  taintToleration: "node-role.kubernetes.io/control-plane:NoSchedule"
+
+persistence:
+  defaultClass: true
+  defaultFsType: ext4
+  defaultClassReplicaCount: 2
+
+global:
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+metrics:
+  serviceMonitor:
+    enabled: true
+    interval: 30s

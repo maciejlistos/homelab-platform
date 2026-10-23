@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+
+metadata:
+  name: n8n
+  namespace: monitoring
+
+  labels:
+    release: kube-prometheus-stack
+
+spec:
+  namespaceSelector:
+    matchNames:
+      - n8n
+
+  selector:
+    matchLabels:
+      homelab.openai.io/service: n8n
+
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
