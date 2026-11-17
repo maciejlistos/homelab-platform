@@ -4,8 +4,6 @@ metadata:
   name: experiments
   annotations:
     argocd.argoproj.io/sync-wave: "-2"
-  labels:
-    homelab.openai.io/purpose: experiments
 ---
 apiVersion: v1
 kind: LimitRange

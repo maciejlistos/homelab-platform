@@ -15,7 +15,8 @@ spec:
 
   selector:
     matchLabels:
-      homelab.openai.io/service: n8n
+      app.kubernetes.io/name: n8n
+      app.kubernetes.io/instance: n8n
 
   endpoints:
     - port: http

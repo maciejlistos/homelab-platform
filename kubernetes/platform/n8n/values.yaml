@@ -32,9 +32,6 @@ service:
   type: ClusterIP
   port: 5678
 
-commonLabels:
-  homelab.openai.io/service: n8n
-
 config:
   timezone: Europe/Warsaw
 
