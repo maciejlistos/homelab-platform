@@ -18,7 +18,8 @@ patterns=(
 failed=0
 for pattern in "${patterns[@]}"; do
   # Placeholders: example.ts.net and locally administered 02:00:00:* MACs.
-  if hits="$(git grep -nIiE -e "$pattern" -- . ':!scripts/check-public-mirror.sh' \
+  # -P, not -E: the patterns use \b, which macOS's ERE git grep silently never matches.
+  if hits="$(git grep -nIiP -e "$pattern" -- . ':!scripts/check-public-mirror.sh' \
       | grep -viE 'example\.ts\.net|02:00:00(:[0-9a-f]{2}){3}')"; then
     echo "Forbidden pattern: ${pattern}"
     echo "${hits}"
