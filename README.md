@@ -41,7 +41,7 @@ More detail: [architecture](docs/architecture.md), [network and access](docs/dia
 | --- | --- |
 | Immutable infrastructure | Talos Linux nodes configured only through versioned machine-config patches and a pinned Image Factory schematic |
 | Declarative hosts | The gateway is a NixOS flake: routing, NAT, dnsmasq, Tailscale, node exporter and journald shipping to Loki |
-| GitOps | An Argo CD app-of-apps reconciles every platform component and application from `kubernetes/` |
+| GitOps | An Argo CD app-of-apps reconciles the platform components and applications from `kubernetes/`; Cilium, which Argo CD itself depends on, is a Helm release ([ADR 0002](docs/adr/0002-cilium-as-cni-and-kube-proxy-replacement.md)) |
 | Networking | Cilium as CNI and kube-proxy replacement, L2 announcements for LAN load balancers, Hubble for flow visibility, ingress-restricting NetworkPolicies for exposed apps |
 | Storage | Longhorn on dedicated user volumes, with backup and restore treated as separate from replication |
 | Observability | kube-prometheus-stack, Loki and Grafana Alloy; alerts for the gateway, Longhorn, namespace budgets and CI runner pressure; an external heartbeat for the gateway |
