@@ -105,8 +105,8 @@ Kubernetes changes are pulled by Argo CD. Gateway and node changes are applied d
 ## Related repositories
 
 - [traillog-app](https://github.com/maciejlistos/traillog-app): the Go web application deployed from `kubernetes/apps/traillog`.
-- [sqlite-backup-operator](https://github.com/maciejlistos/sqlite-backup-operator): a Kubernetes operator for consistent SQLite backups, built for TrailLog.
-- [platform-lab](https://github.com/maciejlistos/platform-lab): drills, SLOs and postmortems run against this platform.
+- sqlite-backup-operator (In progress): a Kubernetes operator for consistent SQLite backups, built for TrailLog.
+- platform-lab (In progress): drills, SLOs and postmortems run against this platform.
 
 ## License
 

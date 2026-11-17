@@ -36,6 +36,6 @@ flowchart TD
 | --- | --- |
 | Longhorn on dedicated user volumes on all three nodes | Running |
 | TrailLog SQLite backup sidecar, verification and restore Job | Running |
-| Consistent SQLite backups as a Kubernetes operator | In development: [sqlite-backup-operator](https://github.com/maciejlistos/sqlite-backup-operator) |
+| Consistent SQLite backups as a Kubernetes operator | sqlite-backup-operator (In progress) |
 | `hl-data-01` NixOS data host with an SMB share | Planned |
 | Independent off-cluster backup target | Planned |
